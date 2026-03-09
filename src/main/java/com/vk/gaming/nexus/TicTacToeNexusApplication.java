@@ -1,4 +1,4 @@
-package com.vk.gaming.tic_tac_toe_nexus;
+package com.vk.gaming.nexus;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -9,5 +9,4 @@ public class TicTacToeNexusApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(TicTacToeNexusApplication.class, args);
 	}
-
 }
