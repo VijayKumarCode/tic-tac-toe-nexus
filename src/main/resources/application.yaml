@@ -1,3 +1,15 @@
 spring:
-  application:
-    name: tic-tac-toe-nexus
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # This creates the table if it's missing
+      show-sql: true      # Useful for debugging; shows the SQL in the console
+      properties:
+        hibernate:
+          dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true

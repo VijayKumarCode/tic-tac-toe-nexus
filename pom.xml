@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.vk.gaming</groupId>
-	<artifactId>tic-tac-toe-nexus</artifactId>
+	<artifactId>nexus</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>tic-tac-toe-nexus</name>
+	<name>nexus</name>
 	<description>Industry-standard real-time multiplayer gaming server with WebSocket support and PostgreSQL persistence.</description>
 	<url/>
 	<licenses>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nexus</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: 'Segue UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        #status-indicator { margin-bottom: 20px; padding: 10px 20px; border-radius: 20px; font-weight: bold; background: #eee; }
+        .grid { display: grid; grid-template-columns: repeat(3, 100px); gap: 10px; }
+        .cell { width: 100px; height: 100px; background: white; border: 2px solid #333; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer; border-radius: 8px; transition: background 0.2s; }
+        .cell:hover { background: #e8f0fe; }
+    </style>
+</head>
+<body>
+
+<h2>Nexus</h2>
+<div id="status-indicator">Connecting...</div>
+
+<div class="grid" id="board">
+    <div class="cell" onclick="sendMove(0)"></div>
+    <div class="cell" onclick="sendMove(1)"></div>
+    <div class="cell" onclick="sendMove(2)"></div>
+    <div class="cell" onclick="sendMove(3)"></div>
+    <div class="cell" onclick="sendMove(4)"></div>
+    <div class="cell" onclick="sendMove(5)"></div>
+    <div class="cell" onclick="sendMove(6)"></div>
+    <div class="cell" onclick="sendMove(7)"></div>
+    <div class="cell" onclick="sendMove(8)"></div>
+</div>
+
+<script>
+    let stompClient = null;
+    const statusEl = document.getElementById('status-indicator');
+
+    function connect() {
+        const socket = new SockJS('/game-websocket');
+        stompClient = Stomp.over(socket);
+        stompClient.connect({}, function (frame) {
+            statusEl.innerText = "Connected to Nexus";
+            statusEl.style.background = "#d4edda";
+
+            // Subscribe to the topic your GameController broadcasts to
+            stompClient.subscribe('/topic/game-progress', function (result) {
+                const move = JSON.parse(result.body);
+                showMoveOnBoard(move);
+            });
+        }, function(error) {
+            statusEl.innerText = "Connection Failed";
+            statusEl.style.background = "#f8d7da";
+        });
+    }
+
+    function sendMove(position) {
+        const move = {
+            playerUsername: "Vijay",
+            boardPosition: position,
+            symbol: "X"
+        };
+        // Send to the @MessageMapping endpoint in your GameController
+        stompClient.send("/app/game.makeMove", {}, JSON.stringify(move));
+    }
+
+    function showMoveOnBoard(move) {
+        const cells = document.getElementsByClassName('cell');
+        cells[move.boardPosition].innerText = move.symbol;
+    }
+
+    connect();
+</script>
+</body>
+</html>
