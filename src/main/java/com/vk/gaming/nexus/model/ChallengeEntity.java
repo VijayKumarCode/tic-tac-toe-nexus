@@ -1,9 +1,10 @@
 /**
- * Problem No. #141
+ * Problem No. #142
  * Difficulty: Medium
- * Description: Corrected ChallengeEntity with proper Lombok Builder
+ * Description: Refactored ChallengeEntity to remove @Data antipattern
  * Link: https://github.com/VijayKumarCode/Nexus
  * Time Complexity: O(1)
+ * Space Complexity: O(1)
  */
 package com.vk.gaming.nexus.model;
 
@@ -14,10 +15,11 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "challenges")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor // Required for @Builder to function
+@AllArgsConstructor
 public class ChallengeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

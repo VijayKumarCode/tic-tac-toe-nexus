@@ -39,7 +39,7 @@
 
 <div id="lobby-screen" class="screen" style="display: none; width: 600px; display: flex; gap: 20px;">
     <div style="flex: 1;">
-        <h2>Player Lobby</h2>
+        <h2 id="lobby-greeting">Player Lobby</h2>
         <div id="online-users-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #eee; padding: 10px;">
             <p>Scanning for players...</p>
         </div>
@@ -55,6 +55,11 @@
 </div>
 
 <div id="game-container" style="display: none; text-align: center;">
+    <div style="margin-top: 20px;">
+        <button class="btn-primary" onclick="sendToss()" style="width: auto; padding: 10px 20px;">Toss</button>
+        <button class="btn-danger" onclick="sendReset()" style="width: auto; padding: 10px 20px;">Reset</button>
+        <button class="btn-danger" style="margin-left: 10px; width: auto; padding: 10px 20px;" onclick="leaveGame()">Leave Game</button>
+    </div>
     <div id="status-indicator" style="background: #eee;">Waiting for game to start...</div>
     <div class="grid" id="board">
         <div class="cell" onclick="sendMove(0)"></div>
@@ -67,9 +72,26 @@
         <div class="cell" onclick="sendMove(7)"></div>
         <div class="cell" onclick="sendMove(8)"></div>
     </div>
-    <div style="margin-top: 20px;">
-        <button class="btn-primary" onclick="sendToss()" style="width: auto; padding: 10px 20px;">Toss</button>
-        <button class="btn-danger" onclick="sendReset()" style="width: auto; padding: 10px 20px;">Reset</button>
+</div>
+
+<div id="challenge-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #007bff;">
+    <h3 id="challenge-text">Someone challenged you!</h3>
+    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+        <button class="btn-success" onclick="acceptChallenge()">Accept</button>
+        <button class="btn-danger" onclick="declineChallenge()">Decline</button>
+    </div>
+</div>
+
+<div id="waiting-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #ffc107;">
+    <h3 id="waiting-text">Waiting for response...</h3>
+</div>
+
+<div id="toss-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #28a745;">
+    <h3>You won the toss!</h3>
+    <p>Would you like to play first or pass?</p>
+    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+        <button class="btn-success" onclick="submitTossChoice('PLAY')">Play First</button>
+        <button class="btn-primary" onclick="submitTossChoice('PASS')">Pass</button>
     </div>
 </div>
 
@@ -78,6 +100,7 @@
     let currentUser = "";
     let opponentUser = "";
     let currentRoomId = "";
+    let currentPendingOpponent = null;
     let isMyTurn = false;
     let isGameOver = false;
     let roomSubscription = null;
@@ -85,11 +108,11 @@
     const API_BASE = "/api/users";
     const statusEl = document.getElementById('status-indicator');
 
-    // --- 1. INITIALIZATION (Cleaned up duplicates) ---
     window.onload = async function() {
         const saved = localStorage.getItem('nexus_user');
         if (saved) {
             currentUser = saved;
+            updateLobbyGreeting();
             try {
                 await fetch(`${API_BASE}/sync?username=${currentUser}`, { method: 'POST' });
                 showScreen('lobby-screen');
@@ -101,16 +124,14 @@
         }
     };
 
-    // --- SCREEN NAVIGATION ---
     function showScreen(screenId) {
         document.querySelectorAll('.screen, #game-container').forEach(el => el.style.display = 'none');
         document.getElementById(screenId).style.display = 'block';
         if (screenId === 'lobby-screen') {
-            document.getElementById(screenId).style.display = 'flex'; // Maintain flex layout for lobby
+            document.getElementById(screenId).style.display = 'flex';
         }
     }
 
-    // --- AUTHENTICATION ---
     async function register() {
         const u = document.getElementById('reg-username').value;
         const p = document.getElementById('reg-password').value;
@@ -126,21 +147,29 @@
     async function login() {
         const u = document.getElementById('login-username').value;
         const p = document.getElementById('login-password').value;
+
         const res = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({username: u, password: p})
         });
+
         if (res.ok) {
             currentUser = u;
             localStorage.setItem('nexus_user', u);
+            updateLobbyGreeting();
+
+            // ✅ ADD THIS
+            await fetch(`${API_BASE}/sync?username=${currentUser}`, { method: 'POST' });
+
             showScreen('lobby-screen');
             connect();
             startLobbyRefresh();
-        } else { alert("Login failed"); }
+        } else {
+            alert("Login failed");
+        }
     }
 
-    // --- LOBBY & LEADERBOARD ---
     function startLobbyRefresh() {
         refreshLobby();
         refreshLeaderboard();
@@ -150,39 +179,25 @@
         }, 5000);
     }
 
-    async function refreshLeaderboard() {
-        try {
-            const res = await fetch(`${API_BASE}/leaderboard`);
-            if (!res.ok) return;
-            const topPlayers = await res.json();
-            const list = document.getElementById('leaderboard-list');
-
-            let html = "";
-            topPlayers.forEach((player, index) => {
-                html += `
-                    <div style="display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #e9ecef;">
-                        <span>${index + 1}. <strong>${player.username}</strong></span>
-                        <span style="color: #28a745; font-weight: bold;">${player.wins} W</span>
-                    </div>`;
-            });
-            list.innerHTML = html || "<p>No ranked players yet.</p>";
-        } catch (err) {
-            console.error("Leaderboard fetch failed", err);
-        }
+    function updateLobbyGreeting() {
+        document.getElementById('lobby-greeting').innerText = `Lobby - Welcome, ${currentUser}!`;
     }
 
+    async function refreshLeaderboard() {
+        const response = await fetch(`${API_BASE}/leaderboard`);
+        const players = await response.json();
+        const list = document.getElementById('leaderboard-list');
+        list.innerHTML = '';
 
-
-    // --- CHALLENGE LOGIC ---
-    function sendChallenge(target) {
-        const roomId = `${currentUser}_${target}_${Date.now()}`;
-        stompClient.send("/app/challenge", {}, JSON.stringify({
-            sender: currentUser,
-            receiver: target,
-            roomId: roomId,
-            status: "PENDING"
-        }));
-        alert("Challenge sent to " + target);
+        players.forEach(player => {
+            const item = document.createElement('div');
+            item.className = 'leaderboard-item';
+            item.innerHTML = `
+                <span>${player.username}</span>
+                <span class="badge">${player.wins || 0} Wins</span>
+            `;
+            list.appendChild(item);
+        });
     }
 
     function handleChallenge(msg) {
@@ -197,47 +212,72 @@
                 setupGame(msg.roomId, msg.sender);
             }
         } else if (msg.status === "ACCEPTED") {
-            setupGame(msg.roomId, msg.receiver); // Sender sets up using receiver's name
+            setupGame(msg.roomId, msg.receiver);
         } else if (msg.status === "CANCELLED") {
             alert("The challenge was cancelled.");
         }
     }
 
     function setupGame(roomId, opponent) {
-        currentRoomId = roomId;
-        opponentUser = opponent;
-        showScreen('game-container');
+    currentRoomId = roomId;
+    opponentUser = opponent;
+    showScreen('game-container');
 
-        // Clean up old subscriptions to avoid duplicate messages
-        if (roomSubscription) roomSubscription.unsubscribe();
+    // Reset subscription for the new room
+    if (roomSubscription) roomSubscription.unsubscribe();
+    roomSubscription = stompClient.subscribe(`/topic/game/${currentRoomId}`, m => handleRoomMessage(JSON.parse(m.body)));
 
-        // Subscribe to unified room topic for both moves and system messages
-        roomSubscription = stompClient.subscribe(`/topic/game/${currentRoomId}`, m => handleRoomMessage(JSON.parse(m.body)));
+    clearBoardUI();
 
+    // Prevent duplicate tosses: Only one player gets to see the Toss button
+    const tossBtn = document.querySelector('button[onclick="sendToss()"]');
+
+    if (currentUser < opponentUser) {
+        tossBtn.style.display = 'inline-block';
         statusEl.innerText = `Room Ready | vs ${opponentUser} | Click 'Toss' to begin!`;
-        clearBoardUI();
+    } else {
+        tossBtn.style.display = 'none';
+        statusEl.innerText = `Room Ready | vs ${opponentUser} | Waiting for opponent to toss...`;
     }
+}
 
-   function handleRoomMessage(payload) {
-        // 1. Handle System Messages (Toss/Reset)
+    function handleRoomMessage(payload) {
         if (payload.type) {
+            if (payload.type === "GAME_ABORTED") {
+                alert(`${payload.sender} has left the game. Returning to lobby.`);
+                returnToLobbyLocal();
+                return;
+            }
+
             if (payload.type === "GAME_RESET") {
                 clearBoardUI();
-                return; // Exit early so we don't try to process boardPosition
-            } else if (payload.type === "TOSS_RESULT") {
-                alert(payload.message);
+                return;
+            }
+
+            // FIXED: Toss Result Logic for Pass/Play
+            if (payload.type === "TOSS_RESULT") {
                 if (payload.payload === currentUser) {
-                    isMyTurn = true;
-                    statusEl.innerText = "You won the toss! Your turn.";
+                    document.getElementById('toss-modal').style.display = 'block';
+                    statusEl.innerText = "You won the toss! Choose Pass or Play.";
                 } else {
                     isMyTurn = false;
-                    statusEl.innerText = `${opponentUser} won the toss. Waiting...`;
+                    statusEl.innerText = `${opponentUser} won the toss. Waiting for their choice...`;
+                }
+                return;
+            }
+
+          if (payload.type === "GAME_START") { // FIX: Changed from TOSS_DECISION to GAME_START
+                if (payload.payload === currentUser) {
+                    isMyTurn = true;
+                    statusEl.innerText = "Your turn! Make a move.";
+                } else {
+                    isMyTurn = false;
+                    statusEl.innerText = `It is ${opponentUser}'s turn.`;
                 }
                 return;
             }
         }
 
-        // 2. Handle Game Moves - Added check to ensure boardPosition is valid (0-8)
         if (payload.boardPosition !== undefined && payload.boardPosition !== null) {
             const cells = document.getElementsByClassName('cell');
             const pos = parseInt(payload.boardPosition);
@@ -258,9 +298,10 @@
                 }
             }
         }
-    }
+   }
 
-    // FIXED: Lobby Refresh to prevent "Ghost Players" or empty lists
+
+
    async function refreshLobby() {
         const lobbyScreen = document.getElementById('lobby-screen');
         if (lobbyScreen.style.display === 'none') return;
@@ -272,7 +313,6 @@
             const users = await res.json();
             const list = document.getElementById('online-users-list');
 
-            // Clear current list entirely before rebuilding
             list.innerHTML = "";
 
             let otherPlayersFound = false;
@@ -309,16 +349,9 @@
         }
    }
 
-    // --- GAMEPLAY MECHANICS ---
-   function sendMove(pos) {
-        if (isGameOver) {
-            alert("Game is over. Click Reset to play again.");
-            return;
-        }
-        if (!isMyTurn) {
-            console.warn("It's not your turn!");
-            return;
-        }
+    function sendMove(pos) {
+        if (isGameOver) { alert("Game is over."); return; }
+        if (!isMyTurn) { console.warn("It's not your turn!"); return; }
 
         const move = {
             playerUsername: currentUser,
@@ -328,18 +361,27 @@
 
         stompClient.send(`/app/move/${currentRoomId}`, {}, JSON.stringify(move));
         isMyTurn = false;
-   }
-
-    function sendToss() {
-        if (currentRoomId) {
-            stompClient.send(`/app/toss/${currentRoomId}`, {}, JSON.stringify({playerOne: currentUser, playerTwo: opponentUser}));
-        }
+        statusEl.innerText = "Waiting for opponent...";
     }
 
+    function sendToss() {
+    if (currentRoomId) {
+        const tossRequest = {
+            playerOne: currentUser,
+            playerTwo: opponentUser
+        };
+
+        // Send the payload to the backend
+        stompClient.send(`/app/toss/${currentRoomId}`, {}, JSON.stringify(tossRequest));
+
+        // Hide the button immediately to prevent double-clicking
+        document.querySelector('button[onclick="sendToss()"]').style.display = 'none';
+        statusEl.innerText = "Flipping the coin...";
+    }
+}
+
     function sendReset() {
-        if (currentRoomId) {
-            stompClient.send(`/app/reset/${currentRoomId}`, {}, {});
-        }
+        if (currentRoomId) { stompClient.send(`/app/reset/${currentRoomId}`, {}, {}); }
     }
 
     function clearBoardUI() {
@@ -352,14 +394,122 @@
         });
     }
 
-    // --- CONNECTION ---
     function connect() {
         const socket = new SockJS('/game-websocket');
         stompClient = Stomp.over(socket);
-        stompClient.connect({'user': currentUser}, function() {
-            // Only subscribe to personal challenges queue globally
-            stompClient.subscribe('/topic/challenges/' + currentUser, m => handleChallenge(JSON.parse(m.body)));
+        stompClient.debug = null;
+
+        stompClient.connect({}, function(frame) {
+          stompClient.subscribe('/topic/challenges/' + currentUser, function (payload) {
+            const message = JSON.parse(payload.body);
+            if (message.type === 'CHALLENGE_REQUEST') {
+                if (message.sender !== currentUser) {
+                    showChallengeModal(message.sender, message.roomId);
+                }
+            } else if (message.type === 'CHALLENGE_RESPONSE') {
+                handleChallengeResponse(message);
+            }
         });
+        }, function(error) { console.error("WebSocket connection error:", error); });
+    }
+
+    function handleChallengeResponse(message) {
+        // HIDE WAITING UI
+        document.getElementById('waiting-modal').style.display = 'none';
+
+        if (message.status === "ACCEPTED") {
+            alert("Challenge Accepted! Joining game...");
+            const opponent = message.sender === currentUser ? message.receiver : message.sender;
+            setupGame(message.roomId, opponent);
+        } else if (message.status === "DECLINED") {
+            alert(message.sender + " declined your challenge.");
+        }
+    }
+
+    function showChallengeModal(opponent, roomId) {
+        currentPendingOpponent = opponent;
+        currentRoomId = roomId;
+        document.getElementById('challenge-text').innerText = `${opponent} challenged you!`;
+        document.getElementById('challenge-modal').style.display = 'block';
+    }
+
+    function sendChallenge(opponentUsername) {
+        const challengeRequest = {
+            sender: currentUser,
+            receiver: opponentUsername,
+            roomId: currentUser + "_" + opponentUsername + "_" + Date.now(),
+            type: "CHALLENGE_REQUEST"
+        };
+        stompClient.send("/app/challenge", {}, JSON.stringify(challengeRequest));
+
+        // SHOW WAITING UI
+        document.getElementById('waiting-text').innerText = `Waiting for ${opponentUsername} to accept...`;
+        document.getElementById('waiting-modal').style.display = 'block';
+    }
+
+    function acceptChallenge() {
+        if (!stompClient || !currentPendingOpponent) return;
+
+        const response = {
+            sender: currentPendingOpponent, // The person who SENT the challenge (Suresh)
+            receiver: currentUser,          // You (Ramesh)
+            roomId: currentRoomId,
+            status: "ACCEPTED",
+            type: "CHALLENGE_RESPONSE"
+        };
+
+        stompClient.send("/app/challenge/reply", {}, JSON.stringify(response));
+        document.getElementById('challenge-modal').style.display = 'none';
+
+        // Transition your UI to the game screen immediately
+        setupGame(currentRoomId, currentPendingOpponent);
+    }
+
+    function declineChallenge() {
+        if (!stompClient || !currentPendingOpponent) return;
+
+        const response = {
+            sender: currentPendingOpponent,
+            receiver: currentUser,
+            roomId: currentRoomId,
+            status: "DECLINED",
+            type: "CHALLENGE_RESPONSE"
+        };
+
+        stompClient.send("/app/challenge/reply", {}, JSON.stringify(response));
+        document.getElementById('challenge-modal').style.display = 'none';
+        currentPendingOpponent = null;
+    }
+
+   function submitTossChoice(choice) {
+    const tossDecision = {
+        winner: currentUser,
+        loser: opponentUser,
+        message: choice // 'PLAY' or 'PASS'
+    };
+
+    // FIX: Must match @MessageMapping("/toss/decision/{roomId}") exactly
+    stompClient.send(`/app/toss/decision/${currentRoomId}`, {}, JSON.stringify(tossDecision));
+    document.getElementById('toss-modal').style.display = 'none';
+    }
+
+    function leaveGame() {
+        if (confirm("Are you sure you want to leave? This will abort the match.")) {
+            stompClient.send("/app/game.abort", {}, JSON.stringify({
+                roomId: currentRoomId,
+                sender: currentUser
+            }));
+            returnToLobbyLocal();
+        }
+    }
+
+    function returnToLobbyLocal() {
+        document.getElementById('game-container').style.display = 'none';
+        document.getElementById('lobby-screen').style.display = 'flex';
+        currentRoomId = null;
+        opponentUser = null;
+        clearBoardUI();
+        refreshLobby();
     }
 
     async function logout() {

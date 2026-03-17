@@ -8,11 +8,13 @@
  */
 package com.vk.gaming.nexus.config;
 
+import com.vk.gaming.nexus.dto.PlayerStatus;
 import com.vk.gaming.nexus.entity.User;
 import com.vk.gaming.nexus.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionConnectEvent;
@@ -27,8 +29,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebSocketEventListener {
 
     private final UserRepository userRepository;
+    // FIXED: Inject template for broadcasting
+    private final SimpMessagingTemplate messagingTemplate;
 
-    // Maps the unique WebSocket session ID to the username
     private final Map<String, String> sessionUserMap = new ConcurrentHashMap<>();
 
     @EventListener
@@ -56,12 +59,18 @@ public class WebSocketEventListener {
         String username = sessionUserMap.remove(sessionId);
 
         if (username != null) {
-            userRepository.findByUsername(username).ifPresent(user -> {
-                user.setStatus(User.UserStatus.OFFLINE);
-                user.setIsOnline(false);
-                userRepository.save(user);
-                log.info("User {} disconnected and marked OFFLINE", username);
-            });
+            if (!sessionUserMap.containsValue(username)) {
+                userRepository.findByUsername(username).ifPresent(user -> {
+                    user.setStatus(User.UserStatus.OFFLINE);
+                    user.setIsOnline(false);
+                    userRepository.save(user);
+                    log.info("User {} is now truly OFFLINE", username);
+
+                    // FIXED: Tell the frontend to remove this user from the lobby
+                    messagingTemplate.convertAndSend("/topic/lobby.status",
+                            new PlayerStatus(username, "OFFLINE"));
+                });
+            }
         }
     }
 }

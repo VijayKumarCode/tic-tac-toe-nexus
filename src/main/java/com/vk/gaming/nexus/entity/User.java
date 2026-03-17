@@ -21,6 +21,9 @@ public class User {
     @Column(name = "is_online", nullable = false)
     private Boolean isOnline = false; // Initialize to false by default
 
+    @Column(name = "last_seen")
+    private Long lastSeen;
+
     @Column(nullable = false)
     private Integer wins = 0;
 
@@ -28,9 +31,10 @@ public class User {
     @Column(nullable = false)
     private UserStatus status = UserStatus.OFFLINE;
     public enum UserStatus {
-        ONLINE,    // Sitting in the lobby
-        IN_GAME,   // Currently playing
-        OFFLINE    // Disconnected
+        ONLINE,
+        IDLE,
+        IN_GAME,
+        OFFLINE
     }
 
 }

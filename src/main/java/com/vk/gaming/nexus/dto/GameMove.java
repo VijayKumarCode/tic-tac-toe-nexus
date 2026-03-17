@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class GameMove {
-
     private String playerUsername;
     private int  boardPosition; // 0 through 8 representing the nexus grid
     private String symbol; // "X" or "O"
