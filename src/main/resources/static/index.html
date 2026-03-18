@@ -2,96 +2,191 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nexus Multiplayer</title>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .screen { text-align: center; padding: 40px; background: white; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 350px; }
-        input { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; }
-        button { width: 88%; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .grid { display: grid; grid-template-columns: repeat(3, 100px); gap: 10px; margin-top: 20px; }
-        .cell { width: 100px; height: 100px; background: #fff; border: 2px solid #333; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; cursor: pointer; border-radius: 10px; }
-        #status-indicator { margin-bottom: 20px; padding: 10px; border-radius: 10px; font-size: 0.9rem; width: 100%; font-weight: bold; }
-        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f7f6;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; margin: 0; padding: 15px;
+        }
+
+        .screen {
+            background: white; border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 30px; width: 100%; max-width: 400px;
+            text-align: center; margin: auto;
+        }
+
+        /* Responsive Lobby Screen */
+        #lobby-screen { max-width: 800px; padding: 20px; }
+        .lobby-scroll { max-height: 350px; overflow-y: auto; padding-right: 5px; }
+
+        /* Modern Game Board Layout */
+        .board-wrapper {
+            background: #ffffff; padding: 15px; border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08); margin: 15px auto;
+            max-width: 380px; width: 100%;
+        }
+        .board {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+            background: #2b3035; padding: 8px; border-radius: 10px;
+            aspect-ratio: 1; /* Keeps it a perfect square on all devices */
+        }
+        .cell {
+            background: #fff; border-radius: 6px; border: none;
+            display: flex; align-items: center; justify-content: center;
+            font-size: clamp(2.5rem, 8vw, 4rem); font-weight: 800;
+            cursor: pointer; transition: all 0.2s ease-in-out;
+            user-select: none;
+        }
+        .cell:active { transform: scale(0.95); }
+        .x-mark { color: #0d6efd; }
+        .o-mark { color: #dc3545; }
+
+        /* Responsive Modals (Glassmorphism) */
+        .glass-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center;
+            z-index: 2000; padding: 15px;
+        }
+        .modal-card {
+            background: white; padding: 30px; border-radius: 20px; text-align: center;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2); width: 100%; max-width: 350px;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 768px) {
+            .screen { padding: 20px; }
+            h2 { font-size: 1.5rem; }
+        }
     </style>
 </head>
 <body>
 
 <div id="register-screen" class="screen" style="display: none;">
-    <h2>Register</h2>
-    <input type="text" id="reg-username" placeholder="Username">
-    <input type="password" id="reg-password" placeholder="Password">
-    <button class="btn-primary" onclick="register()">Create Account</button>
-    <p onclick="showScreen('login-screen')" style="color: blue; cursor: pointer; font-size: 0.8rem;">Login instead</p>
+    <h2 class="mb-4 fw-bold">Register</h2>
+    <input type="text" id="reg-fullname" class="form-control mb-3" placeholder="Full Name">
+    <input type="text" id="reg-username" class="form-control mb-3" placeholder="Choose Username">
+    <input type="password" id="reg-password" class="form-control mb-4" placeholder="Password">
+    <button class="btn btn-primary w-100 fw-bold rounded-pill" onclick="register()">Create Account</button>
 </div>
 
 <div id="login-screen" class="screen">
-    <h2>Nexus Login</h2>
-    <input type="text" id="login-username" placeholder="Username">
-    <input type="password" id="login-password" placeholder="Password">
-    <button class="btn-success" onclick="login()">Login</button>
-    <p onclick="showScreen('register-screen')" style="color: blue; cursor: pointer; font-size: 0.8rem;">Create account</p>
+    <h2 class="mb-4 fw-bold">Nexus Login</h2>
+    <input type="text" id="login-username" class="form-control mb-3" placeholder="Username">
+    <input type="password" id="login-password" class="form-control mb-4" placeholder="Password">
+    <button class="btn btn-success w-100 fw-bold py-2 mb-3 rounded-pill" onclick="login()">Login</button>
+    <p onclick="showScreen('register-screen')" class="text-primary text-decoration-underline" style="cursor: pointer; font-size: 0.9rem;">Create new account</p>
 </div>
 
-<div id="lobby-screen" class="screen" style="display: none; width: 600px; display: flex; gap: 20px;">
-    <div style="flex: 1;">
-        <h2 id="lobby-greeting">Player Lobby</h2>
-        <div id="online-users-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #eee; padding: 10px;">
-            <p>Scanning for players...</p>
+<div id="lobby-screen" class="screen" style="display: none;">
+    <div class="row g-4 w-100 m-0 text-start">
+        <div class="col-12 col-md-7">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h3 id="lobby-greeting" class="fw-bold m-0 d-inline-block">Lobby</h3>
+                    <button class="btn btn-sm btn-outline-danger rounded-pill ms-2 fw-bold" onclick="logout()">Logout</button>
+                </div>
+                <div class="input-group w-50">
+                    <input type="text" id="player-search" class="form-control form-control-sm rounded-pill"
+                           placeholder="🔍 Search players..." onkeyup="filterLobby()">
+                </div>
+            </div>
+            <div class="card shadow-sm border-0">
+                <div class="card-body lobby-scroll" id="online-users-list">
+                </div>
+            </div>
         </div>
-        <button class="btn-danger" onclick="logout()">Logout</button>
-    </div>
 
-    <div style="flex: 0.8; background: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
-        <h3 style="margin-top: 0;">🏆 Top Players</h3>
-        <div id="leaderboard-list" style="font-size: 0.9rem;">
-            <p>Loading rankings...</p>
+        <div class="col-12 col-md-5">
+            <div class="card bg-light border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h4 class="fw-bold mb-3">🏆 Leaderboard</h4>
+                    <div id="leaderboard-list" class="d-flex flex-column gap-2">
+                        <p class="text-muted text-center my-3">Loading rankings...</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<div id="game-container" style="display: none; text-align: center;">
-    <div style="margin-top: 20px;">
-        <button class="btn-primary" onclick="sendToss()" style="width: auto; padding: 10px 20px;">Toss</button>
-        <button class="btn-danger" onclick="sendReset()" style="width: auto; padding: 10px 20px;">Reset</button>
-        <button class="btn-danger" style="margin-left: 10px; width: auto; padding: 10px 20px;" onclick="leaveGame()">Leave Game</button>
+<div id="game-container" class="screen" style="display: none; max-width: 500px;">
+    <h4 class="mb-2 text-secondary">Room: <span class="text-dark fw-bold" id="room-id-display"></span></h4>
+
+    <div id="status-indicator" class="alert alert-info w-100 fw-bold shadow-sm py-2">Waiting...</div>
+
+    <div id="toss-controls" style="min-height: 45px;" class="mb-2">
+        <button id="btn-toss" class="btn btn-warning fw-bold px-4 rounded-pill shadow-sm" onclick="sendToss()">🪙 Toss Coin</button>
     </div>
-    <div id="status-indicator" style="background: #eee;">Waiting for game to start...</div>
-    <div class="grid" id="board">
-        <div class="cell" onclick="sendMove(0)"></div>
-        <div class="cell" onclick="sendMove(1)"></div>
-        <div class="cell" onclick="sendMove(2)"></div>
-        <div class="cell" onclick="sendMove(3)"></div>
-        <div class="cell" onclick="sendMove(4)"></div>
-        <div class="cell" onclick="sendMove(5)"></div>
-        <div class="cell" onclick="sendMove(6)"></div>
-        <div class="cell" onclick="sendMove(7)"></div>
-        <div class="cell" onclick="sendMove(8)"></div>
+
+    <div class="board-wrapper">
+        <div class="board" id="board">
+            <div class="cell" onclick="sendMove(0)"></div>
+            <div class="cell" onclick="sendMove(1)"></div>
+            <div class="cell" onclick="sendMove(2)"></div>
+            <div class="cell" onclick="sendMove(3)"></div>
+            <div class="cell" onclick="sendMove(4)"></div>
+            <div class="cell" onclick="sendMove(5)"></div>
+            <div class="cell" onclick="sendMove(6)"></div>
+            <div class="cell" onclick="sendMove(7)"></div>
+            <div class="cell" onclick="sendMove(8)"></div>
+        </div>
+    </div>
+
+    <button class="btn btn-outline-danger w-100 rounded-pill mt-3 fw-bold" onclick="leaveGame()">Abort & Leave Room</button>
+</div>
+
+<div id="challenge-modal" class="glass-overlay">
+    <div class="modal-card border border-primary border-3">
+        <h3 id="challenge-text" class="fw-bold mb-3">Challenge!</h3>
+        <div class="d-flex gap-2 justify-content-center mt-4">
+            <button class="btn btn-success flex-grow-1 rounded-pill fw-bold" onclick="acceptChallenge()">Accept</button>
+            <button class="btn btn-danger flex-grow-1 rounded-pill fw-bold" onclick="declineChallenge()">Decline</button>
+        </div>
     </div>
 </div>
 
-<div id="challenge-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #007bff;">
-    <h3 id="challenge-text">Someone challenged you!</h3>
-    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-        <button class="btn-success" onclick="acceptChallenge()">Accept</button>
-        <button class="btn-danger" onclick="declineChallenge()">Decline</button>
+<div id="waiting-modal" class="glass-overlay">
+    <div class="modal-card border border-warning border-3">
+        <div class="spinner-border text-warning mb-3" role="status"></div>
+        <h4 id="waiting-text" class="fw-bold m-0">Waiting for response...</h4>
     </div>
 </div>
 
-<div id="waiting-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #ffc107;">
-    <h3 id="waiting-text">Waiting for response...</h3>
+<div id="toss-modal" class="glass-overlay">
+    <div class="modal-card border border-success border-3">
+        <h2 class="fw-bold text-success mb-2">You Won! 🪙</h2>
+        <p class="text-muted mb-4">Would you like to play first as X, or pass to your opponent?</p>
+        <div class="d-flex gap-2 justify-content-center">
+            <button class="btn btn-success flex-grow-1 rounded-pill fw-bold" onclick="submitTossChoice('PLAY')">Play First</button>
+            <button class="btn btn-secondary flex-grow-1 rounded-pill fw-bold" onclick="submitTossChoice('PASS')">Pass</button>
+        </div>
+    </div>
 </div>
 
-<div id="toss-modal" class="screen" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; border: 2px solid #28a745;">
-    <h3>You won the toss!</h3>
-    <p>Would you like to play first or pass?</p>
-    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-        <button class="btn-success" onclick="submitTossChoice('PLAY')">Play First</button>
-        <button class="btn-primary" onclick="submitTossChoice('PASS')">Pass</button>
+<div id="game-over-modal" class="glass-overlay">
+    <div class="modal-card">
+        <h1 id="go-title" class="fw-bold mb-2">Victory!</h1>
+        <p id="go-desc" class="text-muted mb-4">Outstanding performance.</p>
+        <div class="d-flex flex-column gap-2">
+            <button class="btn btn-success w-100 rounded-pill fw-bold shadow-sm py-2" onclick="requestRematch()">🔄 Play Again</button>
+            <button class="btn btn-outline-danger w-100 rounded-pill fw-bold py-2" onclick="leaveGame()">🚪 Return to Lobby</button>
+        </div>
     </div>
 </div>
 
@@ -104,6 +199,7 @@
     let isMyTurn = false;
     let isGameOver = false;
     let roomSubscription = null;
+    let mySymbol = "";
 
     const API_BASE = "/api/users";
     const statusEl = document.getElementById('status-indicator');
@@ -125,29 +221,47 @@
     };
 
     function showScreen(screenId) {
-        document.querySelectorAll('.screen, #game-container').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
         document.getElementById(screenId).style.display = 'block';
-        if (screenId === 'lobby-screen') {
-            document.getElementById(screenId).style.display = 'flex';
-        }
     }
 
+    function filterLobby() {
+    const query = document.getElementById('player-search').value.toLowerCase();
+    const items = document.querySelectorAll('.user-item-row');
+
+    items.forEach(item => {
+        const username = item.getAttribute('data-username').toLowerCase();
+        const fullname = item.getAttribute('data-fullname').toLowerCase();
+        // Search matches either username or real name
+        item.style.display = (username.includes(query) || fullname.includes(query)) ? "flex" : "none";
+    });
+}
+
     async function register() {
+        const fn = document.getElementById('reg-fullname').value;
         const u = document.getElementById('reg-username').value;
         const p = document.getElementById('reg-password').value;
+
+        if(!fn || !u || !p) return alert("Please fill all fields");
+
         const res = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: u, password: p})
+            body: JSON.stringify({fullName: fn, username: u, password: p})
         });
-        if (res.ok) { alert("Success! Please login."); showScreen('login-screen'); }
-        else { alert(await res.text()); }
+
+        if (res.ok) {
+            alert("Account created successfully!");
+            showScreen('login-screen');
+        } else {
+            const errorMsg = await res.text();
+            alert(errorMsg); // This will show "Username already taken" from the backend
+        }
     }
 
     async function login() {
         const u = document.getElementById('login-username').value;
         const p = document.getElementById('login-password').value;
-
         const res = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -158,29 +272,23 @@
             currentUser = u;
             localStorage.setItem('nexus_user', u);
             updateLobbyGreeting();
-
-            // ✅ ADD THIS
             await fetch(`${API_BASE}/sync?username=${currentUser}`, { method: 'POST' });
-
             showScreen('lobby-screen');
             connect();
             startLobbyRefresh();
         } else {
-            alert("Login failed");
+            alert("Login failed. Check credentials.");
         }
     }
 
     function startLobbyRefresh() {
         refreshLobby();
         refreshLeaderboard();
-        setInterval(() => {
-            refreshLobby();
-            refreshLeaderboard();
-        }, 5000);
+        setInterval(() => { refreshLobby(); refreshLeaderboard(); }, 5000);
     }
 
     function updateLobbyGreeting() {
-        document.getElementById('lobby-greeting').innerText = `Lobby - Welcome, ${currentUser}!`;
+        document.getElementById('lobby-greeting').innerText = `Welcome, ${currentUser}`;
     }
 
     async function refreshLeaderboard() {
@@ -190,91 +298,134 @@
         list.innerHTML = '';
 
         players.forEach(player => {
-            const item = document.createElement('div');
-            item.className = 'leaderboard-item';
-            item.innerHTML = `
-                <span>${player.username}</span>
-                <span class="badge">${player.wins || 0} Wins</span>
-            `;
-            list.appendChild(item);
+            list.innerHTML += `
+                <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
+                    <span class="fw-bold text-dark">${player.username}</span>
+                    <span class="badge bg-warning text-dark px-3 py-2 rounded-pill">${player.wins || 0} Wins</span>
+                </div>`;
         });
     }
 
-    function handleChallenge(msg) {
-        if (msg.status === "PENDING") {
-            if (confirm(`${msg.sender} wants to play!`)) {
-                stompClient.send("/app/challenge/reply", {}, JSON.stringify({
-                    sender: msg.sender,
-                    receiver: currentUser,
-                    roomId: msg.roomId,
-                    status: "ACCEPTED"
-                }));
-                setupGame(msg.roomId, msg.sender);
+    async function refreshLobby() {
+    const lobbyScreen = document.getElementById('lobby-screen');
+    if (lobbyScreen.style.display === 'none') return;
+
+    try {
+        const res = await fetch(`${API_BASE}/lobby`);
+        const users = await res.json();
+        const list = document.getElementById('online-users-list');
+        list.innerHTML = "";
+        let otherPlayersFound = false;
+
+        users.forEach(user => {
+            if (user.username !== currentUser) {
+                otherPlayersFound = true;
+                const isBusy = user.status === "IN_GAME";
+                const statusClass = isBusy ? "bg-danger" : (user.status === "ONLINE" ? "bg-success" : "bg-secondary");
+
+                // Added 'user-item-row' class and 'data-username' for the search filter
+                list.innerHTML += `
+                    <div class="d-flex justify-content-between align-items-center p-2 border-bottom user-item-row"
+                         data-username="${user.username}"
+                         data-fullname="${user.fullName || ''}">
+                        <div>
+                            <div>
+                                <span class="fw-bold">${user.username}</span>
+                                <span class="badge ${statusClass} ms-2 rounded-pill" style="font-size: 0.7em;">${user.status}</span>
+                            </div>
+                            <small class="text-muted d-block" style="font-size: 0.75rem;">${user.fullName || 'Nexus Player'}</small>
+                        </div>
+                        <button class="btn btn-primary btn-sm rounded-pill px-3 fw-bold"
+                                ${(user.status !== "ONLINE" || isBusy) ? "disabled" : ""}
+                                onclick="sendChallenge('${user.username}')">Challenge</button>
+                    </div>`;
             }
-        } else if (msg.status === "ACCEPTED") {
-            setupGame(msg.roomId, msg.receiver);
-        } else if (msg.status === "CANCELLED") {
-            alert("The challenge was cancelled.");
+        });
+
+        if (!otherPlayersFound) {
+            list.innerHTML = "<p class='text-muted text-center my-3'>No other players online.</p>";
+        } else {
+            // Re-apply the search filter after the list refreshes to keep the search consistent
+            filterLobby();
         }
-    }
-
-    function setupGame(roomId, opponent) {
-    currentRoomId = roomId;
-    opponentUser = opponent;
-    showScreen('game-container');
-
-    // Reset subscription for the new room
-    if (roomSubscription) roomSubscription.unsubscribe();
-    roomSubscription = stompClient.subscribe(`/topic/game/${currentRoomId}`, m => handleRoomMessage(JSON.parse(m.body)));
-
-    clearBoardUI();
-
-    // Prevent duplicate tosses: Only one player gets to see the Toss button
-    const tossBtn = document.querySelector('button[onclick="sendToss()"]');
-
-    if (currentUser < opponentUser) {
-        tossBtn.style.display = 'inline-block';
-        statusEl.innerText = `Room Ready | vs ${opponentUser} | Click 'Toss' to begin!`;
-    } else {
-        tossBtn.style.display = 'none';
-        statusEl.innerText = `Room Ready | vs ${opponentUser} | Waiting for opponent to toss...`;
+    } catch (err) {
+        console.error("Lobby refresh failed:", err);
     }
 }
+
+    function setupGame(roomId, opponent) {
+        currentRoomId = roomId;
+        opponentUser = opponent;
+        document.getElementById('room-id-display').innerText = `${currentUser} vs ${opponentUser}`;
+        showScreen('game-container');
+
+        if (roomSubscription) roomSubscription.unsubscribe();
+        roomSubscription = stompClient.subscribe(`/topic/game/${currentRoomId}`, m => handleRoomMessage(JSON.parse(m.body)));
+
+        resetBoardState();
+    }
+
+    function resetBoardState() {
+        isGameOver = false;
+        isMyTurn = false;
+        document.getElementById('game-over-modal').style.display = 'none';
+
+        const cells = document.getElementsByClassName('cell');
+        for(let i=0; i<cells.length; i++) {
+            cells[i].innerText = "";
+            cells[i].className = "cell"; // remove color classes
+        }
+
+        const tossBtn = document.getElementById('btn-toss');
+        if (currentUser < opponentUser) {
+            tossBtn.style.display = 'inline-block';
+            statusEl.className = "alert alert-primary w-100 fw-bold shadow-sm py-2";
+            statusEl.innerText = "You are Host. Click 'Toss Coin' to begin!";
+        } else {
+            tossBtn.style.display = 'none';
+            statusEl.className = "alert alert-secondary w-100 fw-bold shadow-sm py-2";
+            statusEl.innerText = `Waiting for ${opponentUser} to toss...`;
+        }
+    }
 
     function handleRoomMessage(payload) {
         if (payload.type) {
             if (payload.type === "GAME_ABORTED") {
-                alert(`${payload.sender} has left the game. Returning to lobby.`);
+                alert(`${payload.sender} left the game.`);
                 returnToLobbyLocal();
                 return;
             }
-
             if (payload.type === "GAME_RESET") {
-                clearBoardUI();
+                resetBoardState();
                 return;
             }
-
-            // FIXED: Toss Result Logic for Pass/Play
             if (payload.type === "TOSS_RESULT") {
+                document.getElementById('btn-toss').style.display = 'none';
                 if (payload.payload === currentUser) {
-                    document.getElementById('toss-modal').style.display = 'block';
+                    document.getElementById('toss-modal').style.display = 'flex';
                     statusEl.innerText = "You won the toss! Choose Pass or Play.";
                 } else {
                     isMyTurn = false;
-                    statusEl.innerText = `${opponentUser} won the toss. Waiting for their choice...`;
+                    statusEl.innerText = `${opponentUser} won the toss. Waiting...`;
                 }
                 return;
             }
+            if (payload.type === "GAME_START") {
+                document.getElementById('btn-toss').style.display = 'none';
 
-          if (payload.type === "GAME_START") { // FIX: Changed from TOSS_DECISION to GAME_START
+                // payload.payload contains the username of the person playing first (X)
                 if (payload.payload === currentUser) {
                     isMyTurn = true;
+                    mySymbol = 'X'; // You are starting, so you are X
+                    statusEl.className = "alert alert-success w-100 fw-bold shadow-sm py-2";
                     statusEl.innerText = "Your turn! Make a move.";
                 } else {
                     isMyTurn = false;
+                    mySymbol = 'O'; // Opponent is starting, so you are O
+                    statusEl.className = "alert alert-warning w-100 fw-bold shadow-sm py-2";
                     statusEl.innerText = `It is ${opponentUser}'s turn.`;
                 }
-                return;
+            return;
             }
         }
 
@@ -282,116 +433,73 @@
             const cells = document.getElementsByClassName('cell');
             const pos = parseInt(payload.boardPosition);
 
-            if (cells[pos]) {
+            if (cells[pos] && cells[pos].innerText === "") {
                 cells[pos].innerText = payload.symbol;
-                cells[pos].style.color = (payload.symbol === 'X') ? '#007bff' : '#dc3545';
+                cells[pos].classList.add(payload.symbol === 'X' ? 'x-mark' : 'o-mark');
 
                 if (payload.gameState && payload.gameState !== "ONGOING") {
                     isGameOver = true;
-                    statusEl.innerText = `Game Over: ${payload.gameState}`;
-                    setTimeout(() => alert("Game Over: " + payload.gameState), 100);
+                    showWinnerModal(payload.gameState);
                 } else if (payload.playerUsername !== currentUser) {
                     isMyTurn = true;
+                    statusEl.className = "alert alert-success w-100 fw-bold shadow-sm py-2";
                     statusEl.innerText = "Your turn!";
                 } else {
+                    statusEl.className = "alert alert-warning w-100 fw-bold shadow-sm py-2";
                     statusEl.innerText = "Waiting for opponent...";
                 }
             }
         }
-   }
-
-
-
-   async function refreshLobby() {
-        const lobbyScreen = document.getElementById('lobby-screen');
-        if (lobbyScreen.style.display === 'none') return;
-
-        try {
-            const res = await fetch(`${API_BASE}/lobby`);
-            if (!res.ok) throw new Error("Lobby fetch failed");
-
-            const users = await res.json();
-            const list = document.getElementById('online-users-list');
-
-            list.innerHTML = "";
-
-            let otherPlayersFound = false;
-            users.forEach(user => {
-                if (user.username !== currentUser) {
-                    otherPlayersFound = true;
-                    const isBusy = user.status === "IN_GAME";
-                    const statusColor = isBusy ? "#dc3545" : (user.status === "ONLINE" ? "#28a745" : "#6c757d");
-
-                    const userDiv = document.createElement('div');
-                    userDiv.className = 'user-item';
-                    userDiv.innerHTML = `
-                        <div>
-                            <span style="font-weight: bold;">${user.username}</span>
-                            <span style="margin-left: 8px; font-size: 0.8em; padding: 2px 6px; border-radius: 10px; background: ${statusColor}; color: white;">
-                                ${user.status}
-                            </span>
-                        </div>
-                        <button class="btn-success"
-                                style="width:auto; padding:5px 10px;"
-                                ${(user.status !== "ONLINE" || isBusy) ? "disabled style='opacity:0.5;'" : ""}
-                                onclick="sendChallenge('${user.username}')">
-                            Challenge
-                        </button>`;
-                    list.appendChild(userDiv);
-                }
-            });
-
-            if (!otherPlayersFound) {
-                list.innerHTML = "<p>No other players online.</p>";
-            }
-        } catch (err) {
-            console.error("Lobby refresh error:", err);
-        }
-   }
+    }
 
     function sendMove(pos) {
-        if (isGameOver) { alert("Game is over."); return; }
-        if (!isMyTurn) { console.warn("It's not your turn!"); return; }
+        if (isGameOver || !isMyTurn) return;
+        const cells = document.getElementsByClassName('cell');
+        if(cells[pos].innerText !== "") return; // Prevent clicking filled cells locally
 
-        const move = {
-            playerUsername: currentUser,
-            boardPosition: pos,
-            roomId: currentRoomId
-        };
-
-        stompClient.send(`/app/move/${currentRoomId}`, {}, JSON.stringify(move));
+        stompClient.send(`/app/move/${currentRoomId}`, {}, JSON.stringify({
+            playerUsername: currentUser, boardPosition: pos, roomId: currentRoomId
+        }));
         isMyTurn = false;
+        statusEl.className = "alert alert-warning w-100 fw-bold shadow-sm py-2";
         statusEl.innerText = "Waiting for opponent...";
     }
 
     function sendToss() {
-    if (currentRoomId) {
-        const tossRequest = {
-            playerOne: currentUser,
-            playerTwo: opponentUser
-        };
-
-        // Send the payload to the backend
-        stompClient.send(`/app/toss/${currentRoomId}`, {}, JSON.stringify(tossRequest));
-
-        // Hide the button immediately to prevent double-clicking
-        document.querySelector('button[onclick="sendToss()"]').style.display = 'none';
-        statusEl.innerText = "Flipping the coin...";
-    }
-}
-
-    function sendReset() {
-        if (currentRoomId) { stompClient.send(`/app/reset/${currentRoomId}`, {}, {}); }
+        if (currentRoomId) {
+            stompClient.send(`/app/toss/${currentRoomId}`, {}, JSON.stringify({ playerOne: currentUser, playerTwo: opponentUser }));
+            document.getElementById('btn-toss').style.display = 'none';
+            statusEl.innerText = "Flipping the coin...";
+        }
     }
 
-    function clearBoardUI() {
-        isGameOver = false;
-        isMyTurn = false;
-        statusEl.innerText = "Board cleared. Toss to see who goes first!";
-        Array.from(document.getElementsByClassName('cell')).forEach(c => {
-            c.innerText = "";
-            c.style.color = "";
-        });
+    function submitTossChoice(choice) {
+        stompClient.send(`/app/toss/decision/${currentRoomId}`, {}, JSON.stringify({ winner: currentUser, loser: opponentUser, message: choice }));
+        document.getElementById('toss-modal').style.display = 'none';
+    }
+
+    function requestRematch() {
+        stompClient.send(`/app/reset/${currentRoomId}`, {}, {});
+    }
+
+   function showWinnerModal(state) {
+        const modal = document.getElementById('game-over-modal');
+        const title = document.getElementById('go-title');
+
+        if (state === "DRAW") {
+            title.innerText = "It's a Draw! 🤝";
+        } else {
+            // Determine symbol: WINNER_X -> X
+            const winnerSymbol = state.replace("WINNER_", "");
+
+            // Logic: If I am X and X won, I win. Otherwise, opponent wins.
+            const mySymbol = (currentUser < opponentUser) ? 'X' : 'O'; // Assuming Host is always X
+            const winnerName = (winnerSymbol === mySymbol) ? "You" : opponentUser;
+
+            title.innerText = `${winnerName} Won! 🏆`;
+            title.className = `fw-bold mb-2 ${winnerSymbol === 'X' ? 'text-primary' : 'text-danger'}`;
+        }
+        modal.style.display = 'flex';
     }
 
     function connect() {
@@ -399,116 +507,66 @@
         stompClient = Stomp.over(socket);
         stompClient.debug = null;
 
-        stompClient.connect({}, function(frame) {
-          stompClient.subscribe('/topic/challenges/' + currentUser, function (payload) {
-            const message = JSON.parse(payload.body);
-            if (message.type === 'CHALLENGE_REQUEST') {
-                if (message.sender !== currentUser) {
-                    showChallengeModal(message.sender, message.roomId);
+        stompClient.connect({}, function() {
+            stompClient.subscribe('/topic/challenges/' + currentUser, function (payload) {
+                const message = JSON.parse(payload.body);
+                if (message.type === 'CHALLENGE_REQUEST' && message.sender !== currentUser) {
+                    currentPendingOpponent = message.sender;
+                    currentRoomId = message.roomId;
+                    document.getElementById('challenge-text').innerText = `${message.sender} challenged you!`;
+                    document.getElementById('challenge-modal').style.display = 'flex';
+                } else if (message.type === 'CHALLENGE_RESPONSE') {
+                    document.getElementById('waiting-modal').style.display = 'none';
+                    if (message.status === "ACCEPTED") {
+                        setupGame(message.roomId, message.sender === currentUser ? message.receiver : message.sender);
+                    } else if (message.status === "DECLINED") {
+                        alert(`${message.sender} declined your challenge.`);
+                    }
                 }
-            } else if (message.type === 'CHALLENGE_RESPONSE') {
-                handleChallengeResponse(message);
-            }
-        });
-        }, function(error) { console.error("WebSocket connection error:", error); });
-    }
-
-    function handleChallengeResponse(message) {
-        // HIDE WAITING UI
-        document.getElementById('waiting-modal').style.display = 'none';
-
-        if (message.status === "ACCEPTED") {
-            alert("Challenge Accepted! Joining game...");
-            const opponent = message.sender === currentUser ? message.receiver : message.sender;
-            setupGame(message.roomId, opponent);
-        } else if (message.status === "DECLINED") {
-            alert(message.sender + " declined your challenge.");
-        }
-    }
-
-    function showChallengeModal(opponent, roomId) {
-        currentPendingOpponent = opponent;
-        currentRoomId = roomId;
-        document.getElementById('challenge-text').innerText = `${opponent} challenged you!`;
-        document.getElementById('challenge-modal').style.display = 'block';
+            });
+        }, err => console.error("WebSocket error:", err));
     }
 
     function sendChallenge(opponentUsername) {
-        const challengeRequest = {
-            sender: currentUser,
-            receiver: opponentUsername,
+        stompClient.send("/app/challenge", {}, JSON.stringify({
+            sender: currentUser, receiver: opponentUsername,
             roomId: currentUser + "_" + opponentUsername + "_" + Date.now(),
             type: "CHALLENGE_REQUEST"
-        };
-        stompClient.send("/app/challenge", {}, JSON.stringify(challengeRequest));
-
-        // SHOW WAITING UI
-        document.getElementById('waiting-text').innerText = `Waiting for ${opponentUsername} to accept...`;
-        document.getElementById('waiting-modal').style.display = 'block';
+        }));
+        document.getElementById('waiting-text').innerText = `Waiting for ${opponentUsername}...`;
+        document.getElementById('waiting-modal').style.display = 'flex';
     }
 
     function acceptChallenge() {
-        if (!stompClient || !currentPendingOpponent) return;
-
-        const response = {
-            sender: currentPendingOpponent, // The person who SENT the challenge (Suresh)
-            receiver: currentUser,          // You (Ramesh)
-            roomId: currentRoomId,
-            status: "ACCEPTED",
-            type: "CHALLENGE_RESPONSE"
-        };
-
-        stompClient.send("/app/challenge/reply", {}, JSON.stringify(response));
+        stompClient.send("/app/challenge/reply", {}, JSON.stringify({
+            sender: currentPendingOpponent, receiver: currentUser, roomId: currentRoomId,
+            status: "ACCEPTED", type: "CHALLENGE_RESPONSE"
+        }));
         document.getElementById('challenge-modal').style.display = 'none';
-
-        // Transition your UI to the game screen immediately
         setupGame(currentRoomId, currentPendingOpponent);
     }
 
     function declineChallenge() {
-        if (!stompClient || !currentPendingOpponent) return;
-
-        const response = {
-            sender: currentPendingOpponent,
-            receiver: currentUser,
-            roomId: currentRoomId,
-            status: "DECLINED",
-            type: "CHALLENGE_RESPONSE"
-        };
-
-        stompClient.send("/app/challenge/reply", {}, JSON.stringify(response));
+        stompClient.send("/app/challenge/reply", {}, JSON.stringify({
+            sender: currentPendingOpponent, receiver: currentUser, roomId: currentRoomId,
+            status: "DECLINED", type: "CHALLENGE_RESPONSE"
+        }));
         document.getElementById('challenge-modal').style.display = 'none';
         currentPendingOpponent = null;
     }
 
-   function submitTossChoice(choice) {
-    const tossDecision = {
-        winner: currentUser,
-        loser: opponentUser,
-        message: choice // 'PLAY' or 'PASS'
-    };
-
-    // FIX: Must match @MessageMapping("/toss/decision/{roomId}") exactly
-    stompClient.send(`/app/toss/decision/${currentRoomId}`, {}, JSON.stringify(tossDecision));
-    document.getElementById('toss-modal').style.display = 'none';
-    }
-
     function leaveGame() {
         if (confirm("Are you sure you want to leave? This will abort the match.")) {
-            stompClient.send("/app/game.abort", {}, JSON.stringify({
-                roomId: currentRoomId,
-                sender: currentUser
-            }));
+            stompClient.send("/app/game.abort", {}, JSON.stringify({ roomId: currentRoomId, sender: currentUser }));
             returnToLobbyLocal();
         }
     }
 
     function returnToLobbyLocal() {
         document.getElementById('game-container').style.display = 'none';
-        document.getElementById('lobby-screen').style.display = 'flex';
-        currentRoomId = null;
-        opponentUser = null;
-        clearBoardUI();
+        document.getElementById('game-over-modal').style.display = 'none';
+        showScreen('lobby-screen');
+        currentRoomId = null; opponentUser = null;
         refreshLobby();
     }
 

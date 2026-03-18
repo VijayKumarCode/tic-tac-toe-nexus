@@ -32,6 +32,7 @@ public class UserService {
         }
 
         User newUser = new User();
+        newUser.setFullName(request.getFullName());
         newUser.setUsername(request.getUsername());
         newUser.setPassword(request.getPassword());
         newUser.setStatus(User.UserStatus.OFFLINE);
