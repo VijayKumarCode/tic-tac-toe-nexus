@@ -21,7 +21,7 @@ const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hos
 // 2. Point to the local backend port for dev, or the custom subdomain for production
 const BACKEND_URL = IS_LOCAL
     ? 'http://localhost:8080'
-    : 'https://api.nexusgame.space';
+    : 'https://nexus-production-25f1.up.railway.app';
 
 // 3. Keep a single source of truth for both REST and WebSockets
 const API_BASE = BACKEND_URL;
@@ -29,7 +29,7 @@ const API_BASE = BACKEND_URL;
 // 4. WebSockets must use secure 'wss' in production and standard 'ws' locally
 const WS_ENDPOINT = IS_LOCAL
     ? `ws://localhost:8080/game-websocket`
-    : `wss://api.nexusgame.space/game-websocket`;
+    : `wss://nexus-production-25f1.up.railway.app`;
 
 /* ══════════════════════════════════
    STATE
