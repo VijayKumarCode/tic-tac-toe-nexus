@@ -109,7 +109,9 @@ public class SecurityConfig {
                 "http://localhost:8080",
                 "http://localhost:5500",
                 "https://*.vercel.app",
-                "https://*.up.railway.app"
+                "https://*.up.railway.app",
+                "https://nexusgame.space",      // Add this
+                "https://www.nexusgame.space"   // Add this
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
