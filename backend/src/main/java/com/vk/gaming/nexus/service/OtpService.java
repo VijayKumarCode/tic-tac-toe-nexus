@@ -1,7 +1,10 @@
 /**
  * Problem No. #197
  * Difficulty: Medium
- * Description: OtpService with Resend configuration and automated memory cleanup.
+ * Description: OtpService using Resend HTTP API (not SMTP).
+ * Reason: Railway blocks outbound port 587. SMTP calls hang for 2+ minutes
+ *         then silently fail. Resend HTTP API uses port 443 (HTTPS) which
+ *         is always open, gives real error messages, and is 10x faster.
  * Link: https://github.com/VijayKumarCode/Nexus
  * Time Complexity: O(1) for generation/verification, O(n) for periodic cleanup
  * Space Complexity: O(u) where u is active unverified users
@@ -13,10 +16,12 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestTemplate;
 
 import java.security.SecureRandom;
 import java.util.Map;
@@ -27,13 +32,72 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class OtpService {
 
-    private final JavaMailSender mailSender;
     private final AppConfig appConfig;
+
+    /* ── Resend API key injected from env var RESEND_API_KEY ── */
+    @Value("${RESEND_API_KEY}")
+    private String resendApiKey;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private static final String RESEND_API_URL = "https://api.resend.com/emails";
 
     private final Map<String, OtpData> otpStorage = new ConcurrentHashMap<>();
     private static final long OTP_EXPIRY = 10 * 60 * 1000; // 10 minutes
     private static final SecureRandom secureRandom = new SecureRandom();
 
+    /* ══════════════════════════════════
+       CORE HTTP SEND — replaces mailSender.send()
+       Uses Resend REST API on port 443 (HTTPS).
+       Railway never blocks port 443.
+    ══════════════════════════════════ */
+    private void sendEmail(String to, String subject, String textBody) {
+        log.info(">>> Sending email via Resend HTTP API to={} subject={}", to, subject);
+        log.info(">>> FROM address = {}", appConfig.getMailFrom());
+        log.info(">>> RESEND_API_KEY present = {}", (resendApiKey != null && !resendApiKey.isBlank()));
+
+        /* Build JSON body manually — no extra dependencies needed */
+        String htmlBody = textBody.replace("\n", "<br>");
+        String jsonBody = """
+                {
+                  "from": "%s",
+                  "to": ["%s"],
+                  "subject": "%s",
+                  "text": "%s",
+                  "html": "<p>%s</p>"
+                }
+                """.formatted(
+                appConfig.getMailFrom(),
+                to,
+                subject,
+                textBody.replace("\"", "\\\"").replace("\n", "\\n"),
+                htmlBody
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(resendApiKey);
+
+        HttpEntity<String> request = new HttpEntity<>(jsonBody, headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    RESEND_API_URL, request, String.class
+            );
+            log.info("✅ Email sent via Resend HTTP API. Status={} Body={}",
+                    response.getStatusCode(), response.getBody());
+        } catch (HttpClientErrorException e) {
+            log.error("❌ Resend API rejected the request. Status={} Body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Email delivery failed: " + e.getResponseBodyAsString());
+        } catch (Exception e) {
+            log.error("❌ Resend API call failed: {}", e.getMessage());
+            throw new RuntimeException("Email delivery failed: " + e.getMessage());
+        }
+    }
+
+    /* ══════════════════════════════════
+       OTP GENERATION
+    ══════════════════════════════════ */
     public String generateOtp(String email) {
         String otp = String.format("%06d", secureRandom.nextInt(1_000_000));
         otpStorage.put(email, new OtpData(otp, System.currentTimeMillis()));
@@ -41,18 +105,10 @@ public class OtpService {
     }
 
     public void sendOtp(String email, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(appConfig.getMailFrom());
-        message.setTo(email);
-        message.setSubject("Nexus Multiplayer - Verification Code");
-        message.setText("Your OTP is: " + otp + "\n\nValid for 10 minutes.");
-
-        try {
-            mailSender.send(message);
-            log.info("OTP sent to {}", email);
-        } catch (Exception e) {
-            log.error("SMTP Error sending OTP to {}: {}", email, e.getMessage());
-        }
+        String subject = "Nexus Multiplayer — Verification Code";
+        String body    = "Your OTP is: " + otp + "\n\nValid for 10 minutes.\n\nDo not share this code.";
+        sendEmail(email, subject, body);
+        log.info("OTP sent to {}", email);
     }
 
     public boolean verifyOtp(String email, String inputOtp) {
@@ -82,39 +138,42 @@ public class OtpService {
         log.info("OTP generated + sent for {}", email);
     }
 
+    /* ══════════════════════════════════
+       ACTIVATION LINK
+       NOTE: Exception is now THROWN, not swallowed.
+       If email fails, register() returns an error to the user
+       instead of silently succeeding.
+    ══════════════════════════════════ */
     public void sendActivationLink(String email, String token) {
         log.info(">>> BASE URL FROM CONFIG = {}", appConfig.getBaseUrl());
-        String activationUrl = appConfig.getBaseUrl() + "/api/users/activate?token=" + token
-                + "&ngrok-skip-browser-warning=true";
+        log.info(">>> MAIL FROM = {}", appConfig.getMailFrom());
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(appConfig.getMailFrom());
-        message.setTo(email);
-        message.setSubject("Activate Your Nexus Account");
-        message.setText("Welcome to Nexus Multiplayer!\n\n" +
-                "Click the link below to activate your account:\n" +
-                activationUrl + "\n\n" +
-                "This link will expire soon.");
+        String activationUrl = appConfig.getBaseUrl()
+                + "/api/users/activate?token=" + token;
 
-        try {
-            mailSender.send(message);
-            log.info("Activation email dispatched via Resend to {}", email);
-        } catch (Exception e) {
-            log.error("Activation email failed to send: {}", e.getMessage());
-        }
+        String subject = "Activate Your Nexus Account";
+        String body    = "Welcome to Nexus Multiplayer!\n\n"
+                + "Click the link below to activate your account:\n"
+                + activationUrl + "\n\n"
+                + "This link expires in 24 hours.\n\n"
+                + "If you did not register, ignore this email.";
+
+        /* Exception propagates up — register() will catch it and return a proper error */
+        sendEmail(email, subject, body);
+        log.info("✅ Activation email dispatched via Resend HTTP API to {}", email);
     }
 
-    // 🔥 Added memory cleanup to prevent Map from growing infinitely
-    @Scheduled(fixedRate = 600000) // Runs every 10 minutes
+    /* ══════════════════════════════════
+       MEMORY CLEANUP
+    ══════════════════════════════════ */
+    @Scheduled(fixedRate = 600000)
     public void cleanExpiredOtps() {
-        long now = System.currentTimeMillis();
-        int initialSize = otpStorage.size();
-
-        otpStorage.entrySet().removeIf(entry -> now - entry.getValue().getCreatedAt() > OTP_EXPIRY);
-
-        int removedCount = initialSize - otpStorage.size();
-        if (removedCount > 0) {
-            log.info("Cleaned up {} expired OTPs from memory.", removedCount);
+        long now         = System.currentTimeMillis();
+        int  initialSize = otpStorage.size();
+        otpStorage.entrySet().removeIf(e -> now - e.getValue().getCreatedAt() > OTP_EXPIRY);
+        int removed = initialSize - otpStorage.size();
+        if (removed > 0) {
+            log.info("Cleaned up {} expired OTPs from memory.", removed);
         }
     }
 
@@ -122,6 +181,6 @@ public class OtpService {
     @AllArgsConstructor
     static class OtpData {
         private String otp;
-        private long createdAt;
+        private long   createdAt;
     }
 }
