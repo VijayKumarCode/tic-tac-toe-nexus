@@ -7,5 +7,4 @@ public class TossRequest {
     private String playerOne;
     private String playerTwo;
     private String roomId;
-
 }

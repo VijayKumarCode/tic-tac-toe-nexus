@@ -12,6 +12,7 @@
 package com.vk.gaming.nexus.service;
 
 import com.vk.gaming.nexus.config.AppConfig;
+import com.vk.gaming.nexus.dto.OtpData;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -175,12 +176,5 @@ public class OtpService {
         if (removed > 0) {
             log.info("Cleaned up {} expired OTPs from memory.", removed);
         }
-    }
-
-    @Data
-    @AllArgsConstructor
-    static class OtpData {
-        private String otp;
-        private long   createdAt;
     }
 }

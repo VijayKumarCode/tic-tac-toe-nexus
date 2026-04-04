@@ -655,7 +655,7 @@ function handleRoomMessage(payload) {
         document.getElementById('btn-toss').style.display   = 'none';
 
         // winner field = username of the player who goes first (plays as X)
-        const firstPlayer = payload.winner;
+        const firstPlayer = payload.payload;
 
         if (firstPlayer === currentUser) {
             isMyTurn = true;
