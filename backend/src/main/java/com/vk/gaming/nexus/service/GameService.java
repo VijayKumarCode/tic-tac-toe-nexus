@@ -90,7 +90,16 @@ public class GameService {
         entity.setPlayerUsername(incomingMove.getPlayerUsername());
         entity.setBoardPosition(incomingMove.getBoardPosition());
         entity.setSymbol(symbol);
-        gameMoveRepository.save(entity);
+
+        try {
+            GameMoveEntity saved = gameMoveRepository.save(entity);
+            log.info("✅ Move saved to DB — id={} room={} player={} pos={} symbol={}",
+                    saved.getId(), rId, saved.getPlayerUsername(),
+                    saved.getBoardPosition(), saved.getSymbol());
+        } catch (Exception e) {
+            log.error("❌ Database save failed — room={} error={}", rId, e.getMessage(), e);
+            return null;
+        }
 
         /* ── CHECK WIN / DRAW ── */
         char[] board = buildBoard(rId);
