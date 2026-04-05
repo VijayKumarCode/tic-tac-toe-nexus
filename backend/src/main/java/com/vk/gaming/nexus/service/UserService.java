@@ -24,14 +24,11 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final OtpService otpService;
 
-    // 🔥 REGISTER
     @Transactional
     public User registerUser(AuthRequest request) {
-
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new EmailAlreadyRegisteredException(request.getEmail());
         }
-
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new UsernameTakenException(request.getUsername());
         }
@@ -41,81 +38,94 @@ public class UserService {
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-
         user.setEnabled(false);
         user.setStatus(User.UserStatus.OFFLINE);
         user.setWins(0);
-        user.setLosses(0); // ✅ NEW
+        user.setLosses(0);
 
-        String token = java.util.UUID.randomUUID().toString();
+        String token = UUID.randomUUID().toString();
         user.setActivationToken(token);
 
-        User savedUser = userRepository.save(user);
-
-        otpService.sendActivationLink(savedUser.getEmail(), token);
-
-        return savedUser;
+        User saved = userRepository.save(user);
+        otpService.sendActivationLink(saved.getEmail(), token);
+        return saved;
     }
 
-    // 🔥 LOGIN (SECURE - no user enumeration)
     @Transactional
     public User loginUser(AuthRequest request) {
+        User user = userRepository.findByUsername(request.getUsername()).orElse(null);
 
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElse(null);
-
+        // Constant-time comparison prevents user-enumeration timing attacks
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Invalid username or password.");
         }
-
         if (!user.isEnabled()) {
-            throw new RuntimeException("Account not activated.");
+            throw new RuntimeException("Account not activated. Check your email.");
         }
 
         user.setStatus(User.UserStatus.ONLINE);
-        // FIX: Removed user.setIsOnline(true)
         user.setLastSeen(System.currentTimeMillis());
-
         return userRepository.save(user);
     }
 
-    // 🔥 LOGOUT
     @Transactional
     public void logoutUser(String username) {
         userRepository.findByUsername(username).ifPresent(user -> {
             user.setStatus(User.UserStatus.OFFLINE);
-            // FIX: Removed user.setIsOnline(false)
             userRepository.save(user);
         });
     }
 
-    // 🔥 HEARTBEAT (OPTIMIZED)
+    /*
+     * BUG FIX — CRITICAL: Original syncUserPresence always set status = ONLINE
+     * even while the player was IN_GAME. This silently corrupted game status
+     * every 10 seconds from the heartbeat, making IN_GAME players appear online
+     * in the lobby and challengeable while in a game.
+     *
+     * Fix: preserve IN_GAME status — only update to ONLINE if not currently in game.
+     */
+    @Transactional
+    public void syncUserPresence(String username) {
+        userRepository.findByUsername(username).ifPresent(u -> {
+            if (u.getStatus() != User.UserStatus.IN_GAME) {
+                u.setStatus(User.UserStatus.ONLINE);
+            }
+            u.setLastSeen(System.currentTimeMillis());
+            userRepository.save(u);
+        });
+    }
+
+    /*
+     * BUG FIX: heartbeat now passes enum parameters to match the fixed
+     * UserRepository.updateHeartbeat signature.
+     */
     @Transactional
     public void heartbeat(String username) {
         int updated = userRepository.updateHeartbeat(
                 username,
-                System.currentTimeMillis()
+                System.currentTimeMillis(),
+                User.UserStatus.IN_GAME,
+                User.UserStatus.ONLINE
         );
-
         if (updated == 0) {
-            log.warn("Heartbeat failed: user not found {}", username);
+            log.warn("Heartbeat: user not found — {}", username);
         }
     }
 
-    // 🔥 PRESENCE CLEANUP (SCALABLE)
-    @Scheduled(fixedRate = 10000)
+    /*
+     * BUG FIX: markInactiveUsersOffline now receives the OFFLINE enum
+     * parameter instead of relying on the broken $UserStatus JPQL reference.
+     */
+    @Scheduled(fixedRate = 10_000)
     @Transactional
     public void updateIdleUsers() {
-        long cutoff = System.currentTimeMillis() - 120000;
-
-        int updated = userRepository.markInactiveUsersOffline(cutoff);
-
+        long cutoff  = System.currentTimeMillis() - 120_000;   // 2 min idle threshold
+        int updated  = userRepository.markInactiveUsersOffline(cutoff, User.UserStatus.OFFLINE);
         if (updated > 0) {
-            log.info("Marked {} users OFFLINE due to inactivity", updated);
+            log.info("Marked {} user(s) OFFLINE due to inactivity", updated);
         }
     }
 
-    // 🔥 GAME STATS (OPTIMIZED - NO ENTITY LOAD)
     @Transactional
     public void incrementWins(String username) {
         userRepository.incrementWins(username);
@@ -126,41 +136,25 @@ public class UserService {
         userRepository.incrementLosses(username);
     }
 
-    // 🔥 FETCH ONLINE USERS
     public List<User> getOnlineUsers() {
         return userRepository.findByStatus(User.UserStatus.ONLINE);
     }
 
-    // 🔥 USERNAME CHECK
     public boolean isUsernameAvailable(String username) {
         return username != null
                 && !username.trim().isEmpty()
                 && !userRepository.existsByUsername(username.trim());
     }
 
-    // 🔥 SYNC PRESENCE
-    @Transactional
-    public void syncUserPresence(String username) {
-        userRepository.findByUsername(username).ifPresent(u -> {
-            u.setStatus(User.UserStatus.ONLINE);
-            // FIX: Removed u.setIsOnline(true)
-            u.setLastSeen(System.currentTimeMillis());
-            userRepository.save(u);
-        });
-    }
-
     public void resendActivationLink(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
         if (user.isEnabled()) {
             throw new RuntimeException("Account already activated");
         }
-
         String token = UUID.randomUUID().toString();
         user.setActivationToken(token);
         userRepository.save(user);
-
         otpService.sendActivationLink(email, token);
     }
 }

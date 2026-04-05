@@ -747,7 +747,7 @@ function connect(afterConnectCallback) {
     stompClient  = Stomp.over(socket);
     stompClient.debug = null;
 
-    stompClient.connect({}, function () {
+    stompClient.connect({ username: currentUser }, function () {
         isConnected = true;
         console.log('✅ WebSocket connected');
 

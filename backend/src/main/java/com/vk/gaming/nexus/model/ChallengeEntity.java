@@ -1,25 +1,8 @@
-/**
- * Problem No. #142
- * Difficulty: Medium
- * Description: Refactored ChallengeEntity to remove @Data antipattern
- * Link: https://github.com/VijayKumarCode/Nexus
- * Time Complexity: O(1)
- * Space Complexity: O(1)
- */
-/*
- * Problem No. #174
- * Difficulty: Medium
- * Description: Refactored ChallengeEntity to replace @Data with specific Lombok annotations for JPA safety
- * Link: https://github.com/VijayKumarCode/Nexus
- * Time Complexity: O(1)
- * Space Complexity: O(1)
- */
 package com.vk.gaming.nexus.model;
 
 import com.vk.gaming.nexus.dto.ChallengeStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -43,9 +26,32 @@ public class ChallengeEntity {
     @Enumerated(EnumType.STRING)
     private ChallengeStatus status;
 
-    @Column(name = "created_at")
+    /*
+     * BUG FIX: @CreationTimestamp was IMPORTED but never APPLIED to this field.
+     * The import was present (misleadingly), but the annotation was missing.
+     * Result: createdAt was always NULL when saved.
+     *
+     * Downstream effect: findTopByRoomIdOrderByCreatedAtDesc returned unpredictable
+     * results when multiple challenges existed for the same room, because PostgreSQL
+     * sorts NULLs first in DESC order — so "top by created_at desc" with all-null
+     * values was effectively random.
+     *
+     * Fix: @PrePersist sets createdAt once on first save. Using @PrePersist instead
+     * of @CreationTimestamp because:
+     * - No extra Hibernate import needed
+     * - Works identically with any JPA provider
+     * - The intent is explicit and visible in the class
+     */
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }

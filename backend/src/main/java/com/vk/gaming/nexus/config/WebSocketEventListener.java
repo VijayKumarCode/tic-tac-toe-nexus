@@ -5,8 +5,12 @@ import com.vk.gaming.nexus.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -16,33 +20,70 @@ public class WebSocketEventListener {
     private final UserService userService;
     private final ChallengeService challengeService;
 
+    /*
+     * BUG FIX — CRITICAL: The original extractUsername() read from
+     * sessionAttributes.get("username") but NOTHING ever stored the username
+     * there. Every disconnect returned null, so:
+     *   - Players were never marked OFFLINE on disconnect
+     *   - Stale challenges were never cancelled on disconnect
+     *   - Ghost players stayed ONLINE in the lobby until the 2-min idle timeout
+     *
+     * Fix: listen to SessionConnectedEvent to capture the username from the
+     * STOMP CONNECT frame header (sent by the frontend on connect), then store
+     * it in the session attributes map. On disconnect, read it back.
+     *
+     * Frontend must send the username in the STOMP connect headers:
+     *   stompClient.connect({ username: currentUser }, function() { ... });
+     *
+     * See nexus.js connect() — updated to pass username in headers.
+     */
     @EventListener
-    public void handleWebSocketDisconnectListener(SessionDisconnectEvent event) {
+    public void handleConnect(SessionConnectedEvent event) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
 
-        String username = extractUsername(event); // your existing logic
-
+        // The connected event wraps the original CONNECT frame — read from native headers
+        String username = extractFromNativeHeader(accessor, "username");
         if (username == null) return;
 
+        Map<String, Object> attrs = accessor.getSessionAttributes();
+        if (attrs != null) {
+            attrs.put("username", username);
+            log.info("WebSocket session stored username={}", username);
+        }
+    }
+
+    @EventListener
+    public void handleDisconnect(SessionDisconnectEvent event) {
+        String username = extractFromSessionAttributes(event);
+        if (username == null) {
+            log.debug("WebSocket disconnect — no username in session (user may not have been authenticated)");
+            return;
+        }
+
         log.info("User disconnected: {}", username);
-
-        // 1. Mark offline
         userService.logoutUser(username);
-
-        // 2. 🔥 Cancel stale challenges
         challengeService.cancelStaleChallenges(username);
     }
 
-    private String extractUsername(SessionDisconnectEvent event) {
+    // ── helpers ──────────────────────────────────────────────────────
 
+    private String extractFromSessionAttributes(SessionDisconnectEvent event) {
         if (event.getMessage() == null) return null;
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
+        Map<String, Object> attrs = accessor.getSessionAttributes();
+        if (attrs == null) return null;
+        Object val = attrs.get("username");
+        return val != null ? val.toString() : null;
+    }
 
-        var accessor = org.springframework.messaging.simp.stomp.StompHeaderAccessor
-                .wrap(event.getMessage());
-
-        if (accessor.getSessionAttributes() == null) return null;
-
-        Object username = accessor.getSessionAttributes().get("username");
-
-        return username != null ? username.toString() : null;
+    private String extractFromNativeHeader(StompHeaderAccessor accessor, String headerName) {
+        try {
+            var nativeHeaders = accessor.toNativeHeaderMap();
+            if (nativeHeaders == null) return null;
+            var values = nativeHeaders.get(headerName);
+            return (values != null && !values.isEmpty()) ? values.get(0) : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
