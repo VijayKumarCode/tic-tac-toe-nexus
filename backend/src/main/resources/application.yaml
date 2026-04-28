@@ -2,7 +2,12 @@ spring:
   application:
     name: nexus
   profiles:
-    active: dev # Default profile
+    active: dev
+
+  # Optional: import dotenv from backend/.env for local dev convenience
+  config:
+    import: optional:dotenv:backend/.env
+
   jpa:
     open-in-view: false
     properties:
@@ -12,7 +17,12 @@ spring:
 server:
   port: ${PORT:8080}
 
-# Common placeholders that profiles will fill
 app:
   mail:
     from: ${MAIL_FROM:onboarding@resend.dev}
+  base-url: ${APP_BASE:http://localhost:8080}
+  resend-api-key: ${RESEND_API_KEY:}
+
+cors:
+  allowed-origins:
+    - ${FRONTEND_URL:http://localhost:3000}

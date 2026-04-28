@@ -1,8 +1,8 @@
-# application-prod.yml
 spring:
   profiles: prod
+
   datasource:
-    url: ${DB_URL} # e.g. jdbc:postgresql://host:5432/dbname
+    url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -10,21 +10,26 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate # do not use update in production
+      ddl-auto: validate
       naming:
         physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
     show-sql: false
     properties:
+      # optional: remove if you want auto-detection
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+# Prefer setting these via environment variables in your host/CI
 app:
   base-url: ${APP_BASE}
-  mail-from: ${MAIL_FROM}
-  resend-api-key: ${RESEND_API_KEY} # prefer HTTP API for Resend
+  mail:
+    from: ${MAIL_FROM:noreply@nexusgame.space}
+  resend-api-key: ${RESEND_API_KEY}
 
 server:
   port: ${PORT:8080}
 
 cors:
-  allowed-origin: ${FRONTEND_URL}
+  allowed-origins:
+    - ${FRONTEND_URL:https://nexusgame.space}
+

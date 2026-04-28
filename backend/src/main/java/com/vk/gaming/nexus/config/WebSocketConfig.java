@@ -2,30 +2,45 @@ package com.vk.gaming.nexus.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
-import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
-import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.*;
 
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    private final AppProperties appProperties;
+
+    public WebSocketConfig(AppProperties appProperties) {
+        this.appProperties = appProperties;
+    }
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-
-      // Enables a memory-based message broker to carry game moves back to the players
         config.enableSimpleBroker("/topic");
-
-      // Designates the prefix for messages bound for methods annotated with @MessageMapping
         config.setApplicationDestinationPrefixes("/app");
     }
 
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        String endpoint = "/game-websocket";
 
-      // This is the URL players will connect to: ws://localhost:8080/game-websocket
-        registry.addEndpoint("/game-websocket")
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
+        // Add endpoint and configure allowed origins/patterns on the endpoint registration
+        var endpointReg = registry.addEndpoint(endpoint);
+
+        var origins = appProperties.getAllowedOrigins(); // List<String> from AppProperties
+        if (origins != null && !origins.isEmpty()) {
+            // If you need exact origins (recommended when allowCredentials=true)
+            endpointReg.setAllowedOrigins(origins.toArray(new String[0]));
+
+            // OR, if you need wildcard patterns (use only when necessary):
+            // endpointReg.setAllowedOriginPatterns(origins.toArray(new String[0]));
+        } else {
+            endpointReg.setAllowedOrigins("http://localhost:3000", "http://localhost:8080");
+        }
+
+        // Enable SockJS after configuring allowed origins on the endpoint registration
+        endpointReg.withSockJS();
     }
+
 }

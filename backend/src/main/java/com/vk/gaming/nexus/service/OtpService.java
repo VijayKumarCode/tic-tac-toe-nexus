@@ -1,6 +1,6 @@
 package com.vk.gaming.nexus.service;
 
-import com.vk.gaming.nexus.config.AppConfig;
+import com.vk.gaming.nexus.config.AppProperties;
 import com.vk.gaming.nexus.dto.OtpData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class OtpService {
 
-    private final AppConfig appConfig;
+    private final AppProperties appProperties;
     private final RestTemplate restTemplate;   // BUG FIX: injected as Spring bean, not new RestTemplate()
 
     @Value("${RESEND_API_KEY}")
@@ -38,7 +38,7 @@ public class OtpService {
     ══════════════════════════════════ */
     private void sendEmail(String to, String subject, String textBody) {
         log.info("Sending email to={} subject={}", to, subject);
-        log.info("FROM={} API_KEY_PRESENT={}", appConfig.getMailFrom(),
+        log.info("FROM={} API_KEY_PRESENT={}", appProperties.getMailFrom(),
                 resendApiKey != null && !resendApiKey.isBlank());
 
         /*
@@ -70,7 +70,7 @@ public class OtpService {
                   "html": "<p>%s</p>"
                 }
                 """,
-                appConfig.getMailFrom(), to, subject, safeText, htmlBody);
+                appProperties.getMailFrom(), to, subject, safeText, htmlBody);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -129,9 +129,9 @@ public class OtpService {
     }
 
     public void sendActivationLink(String email, String token) {
-        log.info("Sending activation link — baseUrl={} from={}", appConfig.getBaseUrl(), appConfig.getMailFrom());
+        log.info("Sending activation link — baseUrl={} from={}", appProperties.getBaseUrl(), appProperties.getMailFrom());
 
-        String url  = appConfig.getBaseUrl() + "/api/users/activate?token=" + token;
+        String url  = appProperties.getBaseUrl() + "/api/users/activate?token=" + token;
         String body = "Welcome to Nexus Multiplayer!\n\n"
                 + "Click the link below to activate your account:\n"
                 + url + "\n\n"

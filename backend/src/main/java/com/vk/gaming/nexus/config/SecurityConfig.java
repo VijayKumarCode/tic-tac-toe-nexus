@@ -1,6 +1,5 @@
 package com.vk.gaming.nexus.config;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -19,16 +18,18 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${cors.allowed-origin:http://localhost:5500}")
-    private String allowedOrigin;
+    private final AppProperties appProperties;
+
+    public SecurityConfig(AppProperties appProperties) {
+        this.appProperties = appProperties;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(AbstractHttpConfigurer::disable) // OK for stateless APIs; revisit if using cookies
                 .authorizeHttpRequests(auth -> auth
-                        // All endpoints are public — Nexus uses its own auth, not Spring Security
                         .anyRequest().permitAll()
                 );
         return http.build();
@@ -38,18 +39,17 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:8080",
-                "http://localhost:5500",
-                "https://*.vercel.app",
-                "https://*.up.railway.app",
-                "https://nexusgame.space",
-                "https://www.nexusgame.space",
-                allowedOrigin
-        ));
+        List<String> origins = appProperties.getAllowedOrigins();
+        if (origins == null || origins.isEmpty()) {
+            // Fallback to localhost for dev
+            origins = List.of("http://localhost:3000", "http://localhost:8080");
+        }
+
+        // When allowCredentials=true, do NOT use wildcard origin
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);    // Required for SockJS / WebSocket
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
@@ -60,5 +60,4 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
 }

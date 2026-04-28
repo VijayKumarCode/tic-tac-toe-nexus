@@ -1,12 +1,12 @@
 spring:
   config:
     activate:
-      on-profile: dev  # ✅ CHANGED: Updated from spring.profiles
+      on-profile: dev
 
   datasource:
     url: jdbc:postgresql://localhost:5432/nexus_db
     username: postgres
-    password: ${DEV_DB_PASSWORD}
+    password: ${DEV_DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -17,9 +17,19 @@ spring:
       hibernate:
         format_sql: true
 
+# Enable Flyway locally if you want migrations applied automatically
+# flyway:
+#   enabled: true
+#   baseline-on-migrate: true
+
 app:
   base-url: http://localhost:8080
-  resend-api-key: ${RESEND_API_KEY}
+  resend-api-key: ${RESEND_API_KEY:}
 
 server:
   port: ${PORT:8080}
+
+cors:
+  allowed-origins:
+    - http://localhost:3000
+    - http://localhost:8080

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
+import java.security.Principal;
 import java.util.Map;
 
 @Component
@@ -23,10 +24,20 @@ public class WebSocketEventListener {
     @EventListener
     public void handleConnect(SessionConnectedEvent event) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
+        Principal user = accessor.getUser();
 
-        // The connected event wraps the original CONNECT frame — read from native headers
-        String username = extractFromNativeHeader(accessor, "username");
-        if (username == null) return;
+        String username = null;
+        if (user != null) {
+            username = user.getName();
+        } else {
+            // Fallback: read a validated header (only if you validate it elsewhere)
+            username = extractHeader(accessor, "username");
+        }
+
+        if (username == null) {
+            log.debug("WebSocket CONNECT without username/principal");
+            return;
+        }
 
         Map<String, Object> attrs = accessor.getSessionAttributes();
         if (attrs != null) {
@@ -37,36 +48,31 @@ public class WebSocketEventListener {
 
     @EventListener
     public void handleDisconnect(SessionDisconnectEvent event) {
-        String username = extractFromSessionAttributes(event);
-        if (username == null) {
-            log.debug("WebSocket disconnect — no username in session (user may not have been authenticated)");
-            return;
-        }
-
-        log.info("User disconnected: {}", username);
-        userService.logoutUser(username);
-        challengeService.cancelStaleChallenges(username);
-    }
-
-    // ── helpers ──────────────────────────────────────────────────────
-
-    private String extractFromSessionAttributes(SessionDisconnectEvent event) {
-        if (event.getMessage() == null) return null;
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         Map<String, Object> attrs = accessor.getSessionAttributes();
-        if (attrs == null) return null;
+        if (attrs == null) {
+            log.debug("WebSocket disconnect — no session attributes");
+            return;
+        }
         Object val = attrs.get("username");
-        return val != null ? val.toString() : null;
+        if (val == null) {
+            log.debug("WebSocket disconnect — username not present in session attributes");
+            return;
+        }
+        String username = val.toString();
+        log.info("User disconnected: {}", username);
+        try {
+            userService.logoutUser(username);
+            challengeService.cancelStaleChallenges(username);
+        } catch (Exception e) {
+            log.warn("Error during disconnect cleanup for {}: {}", username, e.getMessage());
+        }
     }
 
-    private String extractFromNativeHeader(StompHeaderAccessor accessor, String headerName) {
-        try {
-            var nativeHeaders = accessor.toNativeHeaderMap();
-            if (nativeHeaders == null) return null;
-            var values = nativeHeaders.get(headerName);
-            return (values != null && !values.isEmpty()) ? values.get(0) : null;
-        } catch (Exception e) {
-            return null;
-        }
+    private String extractHeader(StompHeaderAccessor accessor, String headerName) {
+        var nativeHeaders = accessor.toNativeHeaderMap();
+        if (nativeHeaders == null) return null;
+        var values = nativeHeaders.get(headerName);
+        return (values != null && !values.isEmpty()) ? values.get(0) : null;
     }
 }
