@@ -19,10 +19,6 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    /*
-     * Read allowed origin from environment variable so it works in all
-     * environments without code changes. Falls back to local dev if not set.
-     */
     @Value("${cors.allowed-origin:http://localhost:5500}")
     private String allowedOrigin;
 
@@ -65,23 +61,4 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    /*
-     * BUG FIX — SECURITY CRITICAL: Original code defined a hardcoded
-     * InMemoryUserDetailsManager with username="dev" password="dev".
-     *
-     * This user existed in PRODUCTION (same SecurityConfig, no profile guard).
-     * Anyone could potentially exploit this in edge-case Spring Security flows.
-     *
-     * Also, the Spring Security "generated password" warning was being suppressed
-     * by the dummy user, hiding real security misconfigurations.
-     *
-     * Fix: Remove the dummy UserDetailsService entirely.
-     * Nexus does NOT use Spring Security for authentication — it has its own
-     * username/password/bcrypt flow in UserService. Spring Security is used
-     * here ONLY for CORS configuration and to disable CSRF. No UserDetailsService
-     * is needed at all. Spring will not auto-generate a password when no
-     * UserDetailsService bean is present and security is fully permissive.
-     *
-     * If you later add JWT, define a real UserDetailsService at that time.
-     */
 }

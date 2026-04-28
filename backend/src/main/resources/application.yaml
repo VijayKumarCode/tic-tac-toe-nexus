@@ -1,19 +1,18 @@
 spring:
-  mail:
-    host: smtp.resend.com
-    port: 587
-    username: resend
-    password: ${RESEND_API_KEY}
+  application:
+    name: nexus
+  profiles:
+    active: dev # Default profile
+  jpa:
+    open-in-view: false
     properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-          ssl:
-            trust: smtp.resend.com
-        debug: true
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
+server:
+  port: ${PORT:8080}
+
+# Common placeholders that profiles will fill
 app:
-  base-url: ${APP_BASE:http://localhost:8080}
-  mail-from: ${MAIL_FROM:onboarding@resend.dev}
+  mail:
+    from: ${MAIL_FROM:onboarding@resend.dev}

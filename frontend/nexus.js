@@ -788,4 +788,4 @@ function connect(afterConnectCallback) {
             });
         }, 3000);
     });
-}
+} 

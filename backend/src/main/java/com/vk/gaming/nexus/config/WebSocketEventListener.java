@@ -20,23 +20,6 @@ public class WebSocketEventListener {
     private final UserService userService;
     private final ChallengeService challengeService;
 
-    /*
-     * BUG FIX — CRITICAL: The original extractUsername() read from
-     * sessionAttributes.get("username") but NOTHING ever stored the username
-     * there. Every disconnect returned null, so:
-     *   - Players were never marked OFFLINE on disconnect
-     *   - Stale challenges were never cancelled on disconnect
-     *   - Ghost players stayed ONLINE in the lobby until the 2-min idle timeout
-     *
-     * Fix: listen to SessionConnectedEvent to capture the username from the
-     * STOMP CONNECT frame header (sent by the frontend on connect), then store
-     * it in the session attributes map. On disconnect, read it back.
-     *
-     * Frontend must send the username in the STOMP connect headers:
-     *   stompClient.connect({ username: currentUser }, function() { ... });
-     *
-     * See nexus.js connect() — updated to pass username in headers.
-     */
     @EventListener
     public void handleConnect(SessionConnectedEvent event) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
